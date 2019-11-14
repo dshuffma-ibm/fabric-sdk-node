@@ -95,7 +95,7 @@ module.exports.newCryptoSuite = function(setting) {
 module.exports.newKeyValueStore = function(options) {
 	// initialize the correct KeyValueStore
 	var kvsEnv = this.getConfigSetting('key-value-store');
-	console.log('kvsEnv', kvsEnv);
+	var store = require('../../' + kvsEnv);
 	return Promise.resolve(new store(options));
 };
 
@@ -433,7 +433,7 @@ var CryptoKeyStore = function(KVSImplClass, opts) {
 		superClass = KVSImplClass;
 	} else {
 		// no super class specified, use the default key value store implementation
-		superClass = require(module.exports.getConfigSetting('key-value-store'));
+		superClass = require('../../' + module.exports.getConfigSetting('key-value-store'));
 		this.logger.debug('constructor, no super class specified, using config: '+module.exports.getConfigSetting('key-value-store'));
 	}
 
