@@ -67,7 +67,7 @@ const ImplicitMetaPolicy_Rule = { 0: 'ANY', 1: 'ALL', 2: 'MAJORITY' };
  *
  * @class
  */
-var Channel = class {
+let Channel = class {
 
 	/**
 	 * Returns a new instance of the class. This is a client-side-only call. To create a new channel
@@ -794,7 +794,157 @@ var Channel = class {
 					return Promise.reject(err);
 				}
 			);
+    }
+
+
+
+
+
+
+
+	/**
+	 * Asks the orderer for a desired system channel block.
+	 * This is similar to [getGenesisBlock()]{@link Channel#getGenesisBlock}, except
+	 * that instead of getting block number 0 it gets the latest block that contains
+	 * the channel configuration, and only returns the decoded {@link ConfigEnvelope}.
+	 *
+	 * @returns {Promise} A Promise for a {@link ConfigEnvelope} object containing the configuration items.
+	 */
+	/*
+	opts: {
+		start_block: number
+		stop_block: number
 	}
+	*/
+	getSystemChannelBlockFromOrderer(opts) {
+		let method = 'getSystemChannelBlockFromOrderer';
+		logger.debug('%s - start for channel %s', method, this._name);
+
+		let self = this;
+		let orderer = this._clientContext.getTargetOrderer(null, this._orderers, this._name);
+
+		let signer = this._clientContext._getSigningIdentity(true);
+		let txId = new TransactionID(signer, true);
+
+		// seek this block
+		let seekSpecifiedStart = new _abProto.SeekSpecified();
+		seekSpecifiedStart.setNumber(Number(opts.start_block));
+		let seekStart = new _abProto.SeekPosition();
+		seekStart.setSpecified(seekSpecifiedStart);
+
+		let seekSpecifiedStop = new _abProto.SeekSpecified();
+		seekSpecifiedStop.setNumber(Number(opts.stop_block));
+		let seekStop = new _abProto.SeekPosition();
+		seekStop.setSpecified(seekSpecifiedStop);
+
+		// seek info with all parts
+		let seekInfo = new _abProto.SeekInfo();
+		seekInfo.setStart(seekStart);
+		seekInfo.setStop(seekStop);
+		seekInfo.setBehavior(_abProto.SeekInfo.SeekBehavior.FAIL_IF_NOT_READY);
+
+		// build the header for use with the seekInfo payload
+		let seekInfoHeader = clientUtils.buildChannelHeader(
+			_commonProto.HeaderType.DELIVER_SEEK_INFO,
+			self._name,
+			txId.getTransactionID(),
+			self._initial_epoch,
+			null,
+			clientUtils.buildCurrentTimestamp(),
+			orderer.getClientCertHash()
+		);
+
+		let seekHeader = clientUtils.buildHeader(signer, seekInfoHeader, txId.getNonce());
+		let seekPayload = new _commonProto.Payload();
+		seekPayload.setHeader(seekHeader);
+		seekPayload.setData(seekInfo.toBuffer());
+		let seekPayloadBytes = seekPayload.toBuffer();
+
+		let sig = signer.sign(seekPayloadBytes);
+		let signature = Buffer.from(sig);
+
+		// building manually or will get protobuf errors on send
+		let envelope = {
+			signature: signature,
+			payload: seekPayloadBytes
+		};
+		// This will return us a block
+		return orderer.sendDeliver(envelope)
+            .then(
+				function (block) {
+                    const block_orig = JSON.parse(JSON.stringify(block));
+					//console.log('got block', typeof block, Object.keys(block));
+					if (!block) {
+						return Promise.reject(new Error('block was not found'));
+                    }
+                    return Promise.resolve(block);
+					// lets have a look at the block
+					/*logger.debug('%s -  config block number ::%s  -- numberof tx :: %s', method, block.header.number, block.data.data.length);
+					if (block.data.data.length !== 1) {
+						return Promise.reject(new Error('block must only contain one transaction'));
+					}
+					let envelope = _commonProto.Envelope.decode(block.data.data[0]);
+					console.log('got envelope 01', envelope);
+					/*let payload = _commonProto.Payload.decode(envelope.payload);
+					console.log('got payload', payload);
+					let channel_header = _commonProto.ChannelHeader.decode(payload.header.channel_header);
+					console.log('got channel_header', channel_header);
+                    console.log('got channel_id', channel_header.channel_id);*/
+
+
+					/*if (channel_header.type === _commonProto.HeaderType.CONFIG) {
+						console.log('its a config block');
+						//return Promise.reject(new Error(util.format('Block must be of type "CONFIG" (%s), but got "%s" instead', _commonProto.HeaderType.CONFIG, channel_header.type)));
+
+						let config_envelope = _configtxProto.ConfigEnvelope.decode(payload.data);
+						console.log('got config_envelope');
+
+						// send back the envelope
+						return Promise.resolve(config_envelope);
+					} else {*/
+						/*console.log('its a data block');
+						logger.debug('%s - good results from seek block ', method); // :: %j',results);
+						// verify that we have the genesis block
+						if (block) {
+							logger.debug('%s - found latest block', method);
+						}
+						else {
+							logger.error('%s - did not find latest block', method);
+							return Promise.reject(new Error('Failed to retrieve latest block', method));
+						}
+
+						logger.debug('%s - latest block is block number %s', block.header.number);
+						// get the last config block number
+						let metadata = _commonProto.Metadata.decode(block.metadata.metadata[_commonProto.BlockMetadataIndex.LAST_CONFIG]);
+						let last_config = _commonProto.LastConfig.decode(metadata.value);
+						console.log('got metadata', metadata);
+                        console.log('got last_config', last_config);
+
+                        //const block_data = BlockDecoder.decode(envelope.payload)
+                        //const block_data = BlockDecoder.decodeBlock(block);
+                        //console.log('got block_data', JSON.stringify(block_data, null, 2));
+                        //console.log('got block_data', block_data);
+                        //const data = BlockDecoder.decodeBlockData2(block.data);
+                        //console.log('got data', data);
+
+                        //let envelope2 = _commonProto.Envelope.decode(block_orig.data.data[0]);
+					    console.log('got envelope 02', envelope);
+                        const data = BlockDecoder.decodeBlockDataEnvelope2(envelope);
+                        console.log('got data', data.payload.header.channel_header);
+
+						logger.debug('%s - latest block has config block of %s', method, last_config.index);*/
+					//}
+				}
+			).catch(
+				function (err) {
+					logger.error('%s - Failed Proposal. Error: %s', method, err.stack ? err.stack : err);
+					return Promise.reject(err);
+				}
+			);
+	}
+
+
+
 
 	/*
 	 * Utility method to load this channel with configuration information
